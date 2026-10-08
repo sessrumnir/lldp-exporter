@@ -15,12 +15,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+CLIENT_SOCKET_TIMEOUT_SECONDS = 10
 
 # "2 days, 01:02:03" / "0 day, 00:00:11" — lldpd spells the unit both ways.
 _AGE = re.compile(r"(?:(\d+)\s+days?,\s*)?(\d+):(\d{2}):(\d{2})")
@@ -167,8 +170,6 @@ def render(neighbours, up, duration, error=""):
             "# TYPE lldp_neighbor_age_seconds gauge",
         ]
         for n in aged:
-            # remote_name alone is not unique: hosts that advertise no
-            # system name all share "", so chassis and port identify the edge.
             labels = (
                 f'local_port="{escape(n["local_port"])}",'
                 f'remote_chassis="{escape(n["remote_chassis"])}",'
@@ -194,18 +195,14 @@ class Handler(BaseHTTPRequestHandler):
     binary = "lldpcli"
     lldpcli_timeout = 10.0
     socket_path = ""
-    # Not the lldpcli timeout: StreamRequestHandler applies this name to the
-    # client socket, so it bounds how long a slow client can hold a thread.
-    timeout = 10
-    # Each scrape forks lldpcli; serialise them so parallel clients cannot
-    # multiply that.
-    collect_lock = threading.Lock()
+    timeout = CLIENT_SOCKET_TIMEOUT_SECONDS
+    one_lldpcli_at_a_time = threading.Lock()
 
     def do_GET(self):
         if self.path.split("?")[0] not in ("/metrics", "/"):
             self.send_error(404)
             return
-        with self.collect_lock:
+        with self.one_lldpcli_at_a_time:
             body = collect(self.binary, self.lldpcli_timeout, self.socket_path)
         body = body.encode()
         self.send_response(200)
@@ -220,8 +217,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def positive_seconds(text):
     value = float(text)
-    # "not > 0" rather than "<= 0" so NaN is rejected too.
-    if not value > 0:
+    if math.isnan(value) or value <= 0:
         raise argparse.ArgumentTypeError(
             f"must be a positive number of seconds: {text}"
         )
