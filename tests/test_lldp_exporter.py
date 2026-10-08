@@ -7,8 +7,12 @@ interface/name is a bare string, and getting that backwards silently yields
 empty labels.
 """
 
+import concurrent.futures
 import json
 import pathlib
+import threading
+import time
+import urllib.request
 
 import pytest
 
@@ -164,3 +168,88 @@ def test_nonzero_exit_is_reported_not_swallowed(monkeypatch):
     body = lldp.collect("lldpcli", 5)
     assert "lldp_up 0" in body
     assert "unable to connect" in body
+
+
+def test_unnamed_neighbours_on_one_port_get_distinct_age_series():
+    """Hosts and phones often advertise no system name.
+
+    Two of them behind one switch port used to share remote_name="" and so
+    emitted the same age series twice, which Prometheus drops as a duplicate.
+    """
+
+    def unnamed(chassis):
+        return {
+            "local_port": "eth0",
+            "via": "LLDP",
+            "age": 60,
+            "remote_chassis": chassis,
+            "remote_name": "",
+            "remote_port": "p1",
+            "remote_port_descr": "",
+        }
+
+    body = lldp.render([unnamed("aa:aa"), unnamed("bb:bb")], True, 0.1)
+    series = [line.rsplit(" ", 1)[0] for line in body.splitlines() if line[0] != "#"]
+    assert len(series) == len(set(series))
+    assert body.count("lldp_neighbor_age_seconds{") == 2
+
+
+class _FakeServer:
+    """Stands in for ThreadingHTTPServer so main() returns instead of serving."""
+
+    def __init__(self, address, handler):
+        self.address = address
+
+    def serve_forever(self):
+        pass
+
+
+def test_lldpcli_timeout_does_not_become_the_socket_timeout(monkeypatch):
+    """StreamRequestHandler applies Handler.timeout to the client socket.
+
+    --timeout once set that attribute, so it also became the HTTP socket
+    timeout; --timeout 0 would have made every client socket non-blocking.
+    """
+    monkeypatch.setattr(lldp, "ThreadingHTTPServer", _FakeServer)
+    socket_timeout = lldp.Handler.timeout
+    monkeypatch.setattr(lldp.Handler, "lldpcli_timeout", lldp.Handler.lldpcli_timeout)
+
+    lldp.main(["--timeout", "3.5"])
+    assert lldp.Handler.lldpcli_timeout == 3.5
+    assert lldp.Handler.timeout == socket_timeout
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan"])
+def test_non_positive_timeout_is_rejected(value):
+    with pytest.raises(SystemExit):
+        lldp.main(["--once", "--timeout", value])
+
+
+def test_concurrent_scrapes_run_one_lldpcli_at_a_time(monkeypatch):
+    """Each scrape forks lldpcli; parallel clients must not multiply that."""
+    state = {"running": 0, "peak": 0}
+    guard = threading.Lock()
+
+    def slow_collect(*args):
+        with guard:
+            state["running"] += 1
+            state["peak"] = max(state["peak"], state["running"])
+        time.sleep(0.05)
+        with guard:
+            state["running"] -= 1
+        return "lldp_up 1\n"
+
+    monkeypatch.setattr(lldp, "collect", slow_collect)
+    server = lldp.ThreadingHTTPServer(("127.0.0.1", 0), lldp.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/metrics"
+    try:
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            bodies = list(
+                pool.map(lambda _: urllib.request.urlopen(url).read(), range(4))
+            )
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert bodies == [b"lldp_up 1\n"] * 4
+    assert state["peak"] == 1

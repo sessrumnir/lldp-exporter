@@ -18,6 +18,7 @@ import json
 import re
 import subprocess
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -166,9 +167,13 @@ def render(neighbours, up, duration, error=""):
             "# TYPE lldp_neighbor_age_seconds gauge",
         ]
         for n in aged:
+            # remote_name alone is not unique: hosts that advertise no
+            # system name all share "", so chassis and port identify the edge.
             labels = (
                 f'local_port="{escape(n["local_port"])}",'
-                f'remote_name="{escape(n["remote_name"])}"'
+                f'remote_chassis="{escape(n["remote_chassis"])}",'
+                f'remote_name="{escape(n["remote_name"])}",'
+                f'remote_port="{escape(n["remote_port"])}"'
             )
             out.append(f"lldp_neighbor_age_seconds{{{labels}}} {n['age']}")
 
@@ -187,14 +192,22 @@ def collect(binary, timeout, socket_path=""):
 
 class Handler(BaseHTTPRequestHandler):
     binary = "lldpcli"
-    timeout = 10
+    lldpcli_timeout = 10.0
     socket_path = ""
+    # Not the lldpcli timeout: StreamRequestHandler applies this name to the
+    # client socket, so it bounds how long a slow client can hold a thread.
+    timeout = 10
+    # Each scrape forks lldpcli; serialise them so parallel clients cannot
+    # multiply that.
+    collect_lock = threading.Lock()
 
     def do_GET(self):
         if self.path.split("?")[0] not in ("/metrics", "/"):
             self.send_error(404)
             return
-        body = collect(self.binary, self.timeout, self.socket_path).encode()
+        with self.collect_lock:
+            body = collect(self.binary, self.lldpcli_timeout, self.socket_path)
+        body = body.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; version=0.0.4")
         self.send_header("Content-Length", str(len(body)))
@@ -205,11 +218,31 @@ class Handler(BaseHTTPRequestHandler):
         """Silence per-request logging; a scrape every 30s is not news."""
 
 
+def positive_seconds(text):
+    value = float(text)
+    # "not > 0" rather than "<= 0" so NaN is rejected too.
+    if not value > 0:
+        raise argparse.ArgumentTypeError(
+            f"must be a positive number of seconds: {text}"
+        )
+    return value
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--listen", default="127.0.0.1:9333")
+    parser.add_argument(
+        "--listen",
+        default="127.0.0.1:9333",
+        help="host:port to serve /metrics on. An empty host (:9333) binds "
+        "127.0.0.1, not every interface; use 0.0.0.0:9333 for that.",
+    )
     parser.add_argument("--lldpcli", default="lldpcli")
-    parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument(
+        "--timeout",
+        type=positive_seconds,
+        default=10.0,
+        help="Seconds to wait for lldpcli.",
+    )
     parser.add_argument(
         "--socket",
         default="",
@@ -230,7 +263,7 @@ def main(argv=None):
 
     host, _, port = args.listen.rpartition(":")
     Handler.binary = args.lldpcli
-    Handler.timeout = args.timeout
+    Handler.lldpcli_timeout = args.timeout
     Handler.socket_path = args.socket
     server = ThreadingHTTPServer((host or "127.0.0.1", int(port)), Handler)
     server.serve_forever()
