@@ -41,5 +41,5 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: docker build --tag lldp-exporter:ci .
+      - run: docker build --file Containerfile --tag lldp-exporter:ci .
       - run: docker run --rm --entrypoint /usr/local/bin/lldp-exporter lldp-exporter:ci --help
