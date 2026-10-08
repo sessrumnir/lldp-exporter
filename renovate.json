@@ -1,0 +1,10 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["local>sessrumnir/.github//renovate/default"],
+  "packageRules": [
+    {
+      "matchManagers": ["dockerfile"],
+      "semanticCommitType": "fix"
+    }
+  ]
+}
