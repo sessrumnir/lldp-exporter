@@ -1,10 +1,59 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>sessrumnir/.github//renovate/default"],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":semanticCommits"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "minimumReleaseAge": "3 days",
+  "platformAutomerge": false,
+  "pre-commit": {
+    "enabled": true
+  },
+  "pip_requirements": {
+    "enabled": false
+  },
+  "pip-compile": {
+    "managerFilePatterns": [
+      "/^requirements(-importer)?\\.txt$/"
+    ]
+  },
   "packageRules": [
     {
-      "matchManagers": ["dockerfile"],
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github-actions"
+    },
+    {
+      "matchManagers": [
+        "pip-compile"
+      ],
+      "groupName": "python tooling"
+    },
+    {
+      "matchManagers": [
+        "dockerfile"
+      ],
       "semanticCommitType": "fix"
+    },
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
     }
   ]
 }
