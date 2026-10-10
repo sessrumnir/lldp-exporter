@@ -29,7 +29,7 @@
               ],
               "mgmt-ip": [
                 {
-                  "value": "10.89.0.2"
+                  "value": "192.0.2.2"
                 },
                 {
                   "value": "fe80::40bf:dbff:fefb:b46"
