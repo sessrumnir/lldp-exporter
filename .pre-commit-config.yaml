@@ -46,7 +46,7 @@ repos:
         args: [--check]
 
   - repo: https://github.com/bridgecrewio/checkov
-    rev: 0f2f7cdf16dc0b71f06e2d33bef097ae1f960446 # frozen: 3.3.28
+    rev: e40023ab262c7c8b7b0a8f0975072b42d1b601f9 # frozen: 3.3.29
     hooks:
       - id: checkov
         files: (^|/)Containerfile$
