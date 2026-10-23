@@ -27,7 +27,7 @@ repos:
         always_run: true
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: d49dfcac072d17c0df32a0722a47e671d6fced3c # frozen: 44.171.3
+    rev: 38fb9abc6a4ccfdcb3ddf1bd96e2761986da9fc9 # frozen: 44.171.8
     hooks:
       - id: renovate-config-validator
         args: [--strict]
