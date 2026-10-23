@@ -14,7 +14,7 @@ repos:
       - id: actionlint
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: d25b2b1dc80689fb633f21f6978bba69871181d3 # frozen: v1.31.0
+    rev: c92afdf2c6ca336aaa8f39e2bd8d48f62dbd8e1f # frozen: v1.31.1
     hooks:
       - id: zizmor
 
@@ -27,7 +27,7 @@ repos:
         always_run: true
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
-    rev: aa63b818cbe95b265dbaf9a9d5f5dfa26922c380 # frozen: 44.164.6
+    rev: 38fb9abc6a4ccfdcb3ddf1bd96e2761986da9fc9 # frozen: 44.171.8
     hooks:
       - id: renovate-config-validator
         args: [--strict]
