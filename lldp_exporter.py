@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 
 CLIENT_SOCKET_TIMEOUT_SECONDS = 10
 
@@ -29,7 +30,7 @@ CLIENT_SOCKET_TIMEOUT_SECONDS = 10
 _AGE = re.compile(r"(?:(\d+)\s+days?,\s*)?(\d+):(\d{2}):(\d{2})")
 
 
-def first(value, default=""):
+def first(value: Any, default: Any = "") -> Any:
     """Unwrap json0's arrays-everywhere encoding.
 
     Every scalar arrives as a one-element list, and some keys are absent
@@ -211,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, *args):
+    def log_message(self, format: str, *args: Any) -> None:
         """Silence per-request logging; a scrape every 30s is not news."""
 
 
